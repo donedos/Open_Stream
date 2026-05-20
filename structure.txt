@@ -1,0 +1,17 @@
+/home/zed/Videos/stream/
+├── movies/
+│   ├── action/
+│   │   └── John Wick (2014)/
+│   │       ├── video.mp4
+│   │       ├── thumb.jpg      <-- Displayed on the Android TV UI
+│   │       └── english.srt    <-- Loaded by ExoPlayer
+│   └── comedy/
+├── series/
+│   └── drama/
+│       └── Breaking Bad/
+│           ├── thumb.jpg      <-- Series poster
+│           ├── S01E01.mp4
+│           └── S01E01.srt
+└── iptv/
+    ├── local_channels.json
+    └── sports.txt
