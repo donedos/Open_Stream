@@ -44,7 +44,7 @@ OpenStream is a lightweight, blazing-fast, plug-and-play local media server buil
 1. **Clone the repository:**
    ```bash
    git clone https://github.com/donedos/Open_Stream.git
-   cd OpenStream
+   cd Open_Stream
 Install the required Python packages:
 
 Bash
