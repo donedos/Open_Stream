@@ -5,8 +5,6 @@ OpenStream is a lightweight, blazing-fast, plug-and-play local media server buil
 
 **🌍 Cross-Platform:** 100% compatible with macOS, Windows, and Linux!
 
-![OpenStream Preview](https://via.placeholder.com/800x400.png?text=OpenStream+Media+Server) *(Feel free to replace this with an actual screenshot of your Tkinter GUI or Android App!)*
-
 ## ✨ Key Features
 
 ### 🖥️ The Server (Python / FastAPI)
@@ -45,7 +43,7 @@ OpenStream is a lightweight, blazing-fast, plug-and-play local media server buil
 
 1. **Clone the repository:**
    ```bash
-   git clone [https://github.com/yourusername/OpenStream.git](https://github.com/yourusername/OpenStream.git)
+   git clone https://github.com/donedos/Open_Stream.git
    cd OpenStream
 Install the required Python packages:
 
