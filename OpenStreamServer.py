@@ -208,8 +208,6 @@ class ConsoleRedirector:
     def isatty(self):
         return False
 
-
-# --- GUI AND SERVER THREADING LOGIC ---
 # --- GUI AND SERVER THREADING LOGIC ---
 class ServerGUI:
     def __init__(self, root):
