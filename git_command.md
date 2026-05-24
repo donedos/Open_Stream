@@ -1,14 +1,3 @@
-> git init
-> git status
-> git add .
-> git commit -m “09/27/2025”
-> git branch -M main
-> git remote add origin https://github.com/donedos/meowsicatv2.git
-> git push -u origin <branch name>
-> git push origin main:master
-> git push -u origin --force
-
-
 > python3.13 -m venv venv313
 > source venv/bin/activate
 
