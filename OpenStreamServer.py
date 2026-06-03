@@ -1,4 +1,5 @@
 import os
+import urllib.parse
 import mimetypes
 import sys
 import socket
@@ -22,31 +23,45 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 MEDIA_DIR = ""
 BASE_URL = ""
-#CONFIG_FILE = Path("server_config.json") # File to remember the path
-# Create a permanent, hidden settings folder in the user's Home directory
 APP_DATA_DIR = Path.home() / ".openstream"
-APP_DATA_DIR.mkdir(exist_ok=True) # Creates the folder if it doesn't exist
+APP_DATA_DIR.mkdir(exist_ok=True)
 CONFIG_FILE = APP_DATA_DIR / "server_config.json"
 
-def scan_folder_for_assets(folder_path: Path, relative_base: str):
+def get_media_url(file_path: Path):
+    """Helper to safely generate an absolute, URL-encoded path for any media file."""
+    if not file_path or not file_path.exists():
+        return None
+    try:
+        # Find the relative path from the root MEDIA_DIR
+        rel_path = file_path.relative_to(Path(MEDIA_DIR))
+        # Ensure forward slashes for web URLs and safely encode spaces/special chars
+        safe_path = urllib.parse.quote(str(rel_path).replace("\\", "/"))
+        return f"{BASE_URL}/media/{safe_path}"
+    except ValueError:
+        return None
+
+def scan_folder_for_assets(folder_path: Path):
     """Helper to find the video, thumbnail, and subtitle in a specific folder."""
-    video_url = None
-    thumb_url = None
-    sub_url = None
+    video_file = None
+    thumb_file = None
+    sub_file = None
     
     for file in folder_path.iterdir():
         if file.is_file():
             ext = file.suffix.lower()
-            rel_path = f"{BASE_URL}/media/{relative_base}/{folder_path.name}/{file.name}"
-            
-            if ext in [".mp4", ".mkv", ".avi"]:
-                video_url = rel_path
-            elif ext in [".jpg", ".jpeg", ".png", ".webp"]: 
-                thumb_url = rel_path
-            elif ext == ".srt":
-                sub_url = rel_path
+            if ext in ['.mp4', '.mkv', '.avi', '.webm']:
+                video_file = file
+            elif ext in ['.jpg', '.jpeg', '.png', '.webp']:
+                thumb_file = file
+            elif ext in ['.srt', '.vtt']:
+                sub_file = file
                 
-    return video_url, thumb_url, sub_url
+    # Return as a tuple so unpacking works properly
+    return (
+        get_media_url(video_file) if video_file else None,
+        get_media_url(thumb_file) if thumb_file else None,
+        get_media_url(sub_file) if sub_file else None
+    )
 
 def parse_iptv_files(iptv_dir: Path):
     """Scans for M3U, TXT, or JSON playlists and groups channels by category."""
@@ -76,7 +91,7 @@ def parse_iptv_files(iptv_dir: Path):
     if not grouped_channels["Uncategorized"]: del grouped_channels["Uncategorized"]
     return grouped_channels
 
-def scan_standard_catalog(catalog_dir: Path, rel_base: str):
+def scan_standard_catalog(catalog_dir: Path):
     """Dynamically scans any unknown folder for media files."""
     result = {"Uncategorized": []}
     
@@ -84,20 +99,20 @@ def scan_standard_catalog(catalog_dir: Path, rel_base: str):
     for file in catalog_dir.iterdir():
         if file.is_file():
             ext = file.suffix.lower()
-            if ext in [".mp4", ".mkv", ".avi"]:
-                vid_url = f"{BASE_URL}/media/{rel_base}/{file.name}"
+            if ext in [".mp4", ".mkv", ".avi", ".webm"]:
+                vid_url = get_media_url(file)
                 thumb_url, sub_url = None, None
                 
                 # Check for thumb with same name
                 for img_ext in [".jpg", ".jpeg", ".png", ".webp"]:
                     thumb_file = catalog_dir / f"{file.stem}{img_ext}"
                     if thumb_file.exists():
-                        thumb_url = f"{BASE_URL}/media/{rel_base}/{thumb_file.name}"
+                        thumb_url = get_media_url(thumb_file)
                         break
                         
                 sub_file = catalog_dir / f"{file.stem}.srt"
                 if sub_file.exists():
-                    sub_url = f"{BASE_URL}/media/{rel_base}/{sub_file.name}"
+                    sub_url = get_media_url(sub_file)
                     
                 result["Uncategorized"].append({
                     "title": file.stem, "video_url": vid_url,
@@ -107,25 +122,25 @@ def scan_standard_catalog(catalog_dir: Path, rel_base: str):
     # 2. Scan for Subdirectories
     for sub in catalog_dir.iterdir():
         if sub.is_dir():
-            has_media = any(f.suffix.lower() in [".mp4", ".mkv", ".avi"] for f in sub.iterdir() if f.is_file())
+            has_media = any(f.suffix.lower() in [".mp4", ".mkv", ".avi", ".webm"] for f in sub.iterdir() if f.is_file())
             
             if has_media:
-                vid, thumb, sub_file = scan_folder_for_assets(sub, rel_base)
+                vid, thumb, sub_url = scan_folder_for_assets(sub)
                 if vid:
                     result["Uncategorized"].append({
                         "title": sub.name, "video_url": vid,
-                        "thumbnail_url": thumb, "subtitle_url": sub_file
+                        "thumbnail_url": thumb, "subtitle_url": sub_url
                     })
             else:
                 cat_name = sub.name.capitalize()
                 result[cat_name] = []
                 for media_folder in sub.iterdir():
                     if media_folder.is_dir():
-                        vid, thumb, sub_file = scan_folder_for_assets(media_folder, f"{rel_base}/{sub.name}")
+                        vid, thumb, sub_url = scan_folder_for_assets(media_folder)
                         if vid:
                             result[cat_name].append({
                                 "title": media_folder.name, "video_url": vid,
-                                "thumbnail_url": thumb, "subtitle_url": sub_file
+                                "thumbnail_url": thumb, "subtitle_url": sub_url
                             })
                             
     if not result["Uncategorized"]:
@@ -138,7 +153,7 @@ def get_catalog():
     base_dir = Path(MEDIA_DIR)
     
     catalog = {
-        "catalogs": {},  # The dynamic library
+        "catalogs": {},  
         "series": {},  
         "iptv": {}
     }
@@ -162,27 +177,28 @@ def get_catalog():
                             if show_folder.is_dir():
                                 show_name = show_folder.name
                                 catalog["series"][genre][show_name] = []
-                                show_thumb = None
+                                
+                                show_thumb_file = None
                                 for file in show_folder.iterdir():
                                     if file.is_file() and file.suffix.lower() in [".jpg", ".jpeg", ".png", ".webp"]:
-                                        show_thumb = f"{BASE_URL}/media/{folder.name}/{genre_folder.name}/{show_folder.name}/{file.name}"
+                                        show_thumb_file = file
                                         break 
+                                show_thumb_url = get_media_url(show_thumb_file) if show_thumb_file else None
+
                                 for file in show_folder.iterdir():
                                     if file.is_file():
                                         ext = file.suffix.lower()
-                                        if ext in [".mp4", ".mkv", ".avi"]:
-                                            vid_url = f"{BASE_URL}/media/{folder.name}/{genre_folder.name}/{show_folder.name}/{file.name}"
-                                            sub_url = None
+                                        if ext in [".mp4", ".mkv", ".avi", ".webm"]:
+                                            vid_url = get_media_url(file)
                                             sub_file = show_folder / f"{file.stem}.srt"
-                                            if sub_file.exists():
-                                                sub_url = f"{BASE_URL}/media/{folder.name}/{genre_folder.name}/{show_folder.name}/{sub_file.name}"
+                                            sub_url = get_media_url(sub_file) if sub_file.exists() else None
+                                            
                                             catalog["series"][genre][show_name].append({
                                                 "title": file.stem, "video_url": vid_url,
-                                                "thumbnail_url": show_thumb, "subtitle_url": sub_url
+                                                "thumbnail_url": show_thumb_url, "subtitle_url": sub_url
                                             })
             else:
-                # Custom dynamic folders (Personal, Anime, Movies, etc)
-                scanned_data = scan_standard_catalog(folder, folder.name)
+                scanned_data = scan_standard_catalog(folder)
                 if scanned_data:
                     catalog["catalogs"][folder.name.capitalize()] = scanned_data
 
@@ -234,7 +250,8 @@ class ServerGUI:
         folder_frame.pack(fill="x", pady=15)
         tk.Label(folder_frame, text="Media Folder: ", font=("Arial", 10, "bold")).pack(side="left")
         tk.Entry(folder_frame, textvariable=self.folder_var, state="readonly", width=45).pack(side="left", padx=(0, 10))
-        tk.Button(folder_frame, text="Browse", command=self.select_folder).pack(side="left")
+        self.browse_btn = tk.Button(folder_frame, text="Browse", command=self.select_folder)
+        self.browse_btn.pack(side="left")
 
         control_frame = tk.Frame(top_frame)
         control_frame.pack(pady=5)
@@ -256,8 +273,6 @@ class ServerGUI:
         print("[SYSTEM] OpenStream Server GUI Initialized.")
         print(f"[SYSTEM] Ready to host on {self.local_ip}:8000")
         
-        # --- NEW AUTO-START LOGIC ---
-        # If the saved folder loads successfully, automatically click the start button after 1 second
         if self.load_saved_folder():
             print("[SYSTEM] Valid media folder detected. Auto-starting server in 1 second...")
             self.root.after(1000, self.toggle_server)
@@ -279,15 +294,14 @@ class ServerGUI:
                 with open(CONFIG_FILE, "r") as f:
                     config = json.load(f)
                     saved_path = config.get("last_media_dir", "")
-                    # Double-check that the path still actually exists on the computer
                     if saved_path and os.path.exists(saved_path):
                         MEDIA_DIR = saved_path
                         self.folder_var.set(saved_path)
                         print(f"[SYSTEM] Automatically restored saved folder: {saved_path}")
-                        return True  # Signal that we found a valid folder!
+                        return True 
             except Exception as e:
                 print(f"[SYSTEM] Failed to read configuration file: {e}")
-        return False  # Signal that no valid folder was found
+        return False 
 
     def select_folder(self):
         folder = filedialog.askdirectory()
@@ -304,29 +318,41 @@ class ServerGUI:
                 print(f"[SYSTEM] Failed to write configuration file: {e}")
 
     def run_uvicorn(self):
-        global BASE_URL
-        BASE_URL = f"http://{self.local_ip}:8000"
+        global app
         
-        app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
+        abs_media_dir = os.path.abspath(MEDIA_DIR)
+        
+        app.router.routes = [route for route in app.router.routes if not (hasattr(route, "name") and route.name == "media")]
+        app.mount("/media", StaticFiles(directory=abs_media_dir), name="media")
         
         config = uvicorn.Config(app, host="0.0.0.0", port=8000, log_level="info")
         self.server = uvicorn.Server(config)
+        self.server.install_signal_handlers = lambda: None
+        
         self.server.run()
 
     def toggle_server(self):
+        global BASE_URL
+        
         if not self.is_running:
             if self.folder_var.get() == "No folder selected":
                 print("\n[ERROR] Cannot start server. Please select your media folder first!")
                 return
 
             self.is_running = True
+            
+            # Setup the global API paths BEFORE the thread starts
+            BASE_URL = f"http://{self.local_ip}:8000"
+            
+            # Lock the UI folder selection so they can't change it while FastAPI is streaming
+            self.browse_btn.config(state="disabled")
             self.start_btn.config(text="STOP SERVER", bg="red")
             self.status_label.config(text="Status: RUNNING", fg="green")
             
             print("\n" + "="*50)
             print("[INFO] Starting OpenStream Server...")
             print(f"[INFO] Scanning directory: {MEDIA_DIR}")
-            print(f"[INFO] Network Access URL: http://{self.local_ip}:8000")
+            print(f"[INFO] Network Access URL: {BASE_URL}")
             print("="*50 + "\n")
             
             self.server_thread = threading.Thread(target=self.run_uvicorn, daemon=True)
@@ -334,6 +360,7 @@ class ServerGUI:
         else:
             print("\n[INFO] Sending stop signal to server. Shutting down...")
             self.is_running = False
+            self.browse_btn.config(state="normal")
             self.start_btn.config(text="START SERVER", bg="green")
             self.status_label.config(text="Status: STOPPED", fg="red")
             if self.server:
