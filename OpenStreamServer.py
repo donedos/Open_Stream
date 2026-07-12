@@ -13,6 +13,10 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 import re
+import cv2
+import time
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
 
 # Explicitly teach Python what an MKV file is so it sends the correct content-type header
 mimetypes.add_type('video/x-matroska', '.mkv')
@@ -26,6 +30,27 @@ BASE_URL = ""
 APP_DATA_DIR = Path.home() / ".openstream"
 APP_DATA_DIR.mkdir(exist_ok=True)
 CONFIG_FILE = APP_DATA_DIR / "server_config.json"
+
+# --- THUMBNAIL GENERATION ---
+def generate_thumbnail(video_path: Path):
+    """Generates a .jpg thumbnail if one doesn't exist."""
+    thumb_path = video_path.parent / f"{video_path.stem}.jpg"
+    if not thumb_path.exists():
+        print(f"[SYSTEM] Generating thumbnail for {video_path.name}...")
+        cap = cv2.VideoCapture(str(video_path))
+        success, frame = cap.read()
+        if success:
+            cv2.imwrite(str(thumb_path), frame)
+        cap.release()
+
+# --- FOLDER MONITORING ---
+class MediaFolderHandler(FileSystemEventHandler):
+    def on_created(self, event):
+        if not event.is_directory:
+            print(f"[SYSTEM] New file detected: {os.path.basename(event.src_path)}")
+            # If it's a video, generate thumbnail
+            if event.src_path.lower().endswith(('.mp4', '.mkv', '.avi', '.webm')):
+                generate_thumbnail(Path(event.src_path))
 
 def get_media_url(file_path: Path):
     """Helper to safely generate an absolute, URL-encoded path for any media file."""
@@ -100,6 +125,7 @@ def scan_standard_catalog(catalog_dir: Path):
         if file.is_file():
             ext = file.suffix.lower()
             if ext in [".mp4", ".mkv", ".avi", ".webm"]:
+                generate_thumbnail(file) # --Auto-generate if missing ---
                 vid_url = get_media_url(file)
                 thumb_url, sub_url = None, None
                 
@@ -210,6 +236,8 @@ class ConsoleRedirector:
     def __init__(self, text_widget):
         self.text_widget = text_widget
 
+        self.observer = Observer()
+
     def write(self, string):
         def append():
             self.text_widget.configure(state='normal')
@@ -236,6 +264,8 @@ class ServerGUI:
         self.server = None
         self.is_running = False
         self.local_ip = self.get_local_ip()
+
+        self.observer = None
 
         top_frame = tk.Frame(root)
         top_frame.pack(fill="x")
@@ -271,7 +301,7 @@ class ServerGUI:
         sys.stderr = ConsoleRedirector(self.console)
 
         print("[SYSTEM] OpenStream Server GUI Initialized.")
-        print(f"[SYSTEM] Ready to host on {self.local_ip}:8000")
+        print(f"[SYSTEM] Ready to host on {self.local_ip}:8088")
         
         if self.load_saved_folder():
             print("[SYSTEM] Valid media folder detected. Auto-starting server in 1 second...")
@@ -325,7 +355,8 @@ class ServerGUI:
         app.router.routes = [route for route in app.router.routes if not (hasattr(route, "name") and route.name == "media")]
         app.mount("/media", StaticFiles(directory=abs_media_dir), name="media")
         
-        config = uvicorn.Config(app, host="0.0.0.0", port=8000, log_level="info")
+        # CHANGED: port=8000 is now port=8088
+        config = uvicorn.Config(app, host="0.0.0.0", port=8088, log_level="info")
         self.server = uvicorn.Server(config)
         self.server.install_signal_handlers = lambda: None
         
@@ -340,9 +371,15 @@ class ServerGUI:
                 return
 
             self.is_running = True
+
+            # --- CREATE A FRESH OBSERVER EVERY TIME ---
+            self.observer = Observer()
+            event_handler = MediaFolderHandler()
+            self.observer.schedule(event_handler, MEDIA_DIR, recursive=True)
+            self.observer.start()
             
             # Setup the global API paths BEFORE the thread starts
-            BASE_URL = f"http://{self.local_ip}:8000"
+            BASE_URL = f"http://{self.local_ip}:8088"
             
             # Lock the UI folder selection so they can't change it while FastAPI is streaming
             self.browse_btn.config(state="disabled")
@@ -363,6 +400,13 @@ class ServerGUI:
             self.browse_btn.config(state="normal")
             self.start_btn.config(text="START SERVER", bg="green")
             self.status_label.config(text="Status: STOPPED", fg="red")
+
+            # --- SAFELY STOP AND RESET THE OBSERVER ---
+            if self.observer:
+                self.observer.stop()
+                self.observer.join()
+                self.observer = None
+
             if self.server:
                 self.server.should_exit = True
 
