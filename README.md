@@ -1,112 +1,113 @@
 Markdown
-# 🎬 OpenStream Media Server
+# OpenStream
 
-OpenStream is a lightweight, blazing-fast, plug-and-play local media server built with Python and FastAPI, paired with a custom Jetpack Compose Android/Android TV client. It turns any local hard drive or external SSD into a fully functional, Netflix-style streaming service for your home network.
+OpenStream is a lightweight local media streaming server for browsing and playing movies, TV shows, and IPTV content from devices on the same network. The project combines a Python/FastAPI backend with a Tkinter-based desktop interface so you can point it at a media folder and start streaming quickly.
 
-**🌍 Cross-Platform:** 100% compatible with macOS, Windows, and Linux!
+## What is included
 
-## ✨ Key Features
+- OpenStreamServer.py: the main server application with a GUI for selecting a library folder and launching the media server.
+- library_optimizer.py: a helper tool for optimizing MKV/MP4 files with FFmpeg so they are easier to play on Android devices.
+- server.py: a smaller standalone FastAPI example that exposes a catalog over HTTP.
 
-### 🖥️ The Server (Python / FastAPI)
-* **Run Anywhere:** Works seamlessly on macOS, Windows, Ubuntu, Raspberry Pi, or any machine that runs Python.
-* **Plug-and-Play GUI:** A sleek, dark-themed Tkinter interface makes hosting accessible. No terminal commands required—just browse for your SSD folder and hit Start.
-* **Smart Library Scanner:** Automatically scans your directory, links thumbnails and `.srt` subtitles, and intentionally hides empty folders to keep your client app clean.
-* **FastAPI & Uvicorn Engine:** Built on top of modern, async Python frameworks to ensure zero-lag video delivery across your local Wi-Fi.
-* **Persistent Memory:** Creates a hidden `~/.openstream/server_config.json` file to remember your exact media path. Perfect for headless auto-booting.
-* **Live System Logging:** Monitor network connections, directory scans, and server traffic in real-time directly inside the GUI terminal.
+## Features
 
-### 🛠️ The MKV Auto-Optimizer (Pro)
-* **FFmpeg Integration:** A standalone Tkinter tool (`MKV_Optimizer.py`) that sweeps your library to fix common Android playback issues.
-* **Instant Streaming:** Moves the "moov atom" to the front of heavy MP4/MKV files so they load in 1 second instead of 5 minutes.
-* **Audio Transcoding:** Converts unplayable DTS/Dolby cinema audio into Android-friendly AAC (`-c:a aac`) while retaining 100% original video quality (`-c:v copy`).
-* **Smart Subtitle Extraction:** Automatically copies external `.srt` files or rips embedded subtitles directly from MKV containers for the Android app to read.
+- Scans folders for video files, thumbnails, and subtitles.
+- Serves media over HTTP for local network playback.
+- Supports grouped catalogs for movies, series, and IPTV playlists.
+- Stores your last-selected media path in ~/.openstream/server_config.json.
+- Includes a built-in optimizer for common Android playback issues.
 
-### 📱 The Android & TV Client (Jetpack Compose)
-* **Seamless Cross-Device UI:** A unified codebase that adapts to both mobile touchscreens and Android TV D-Pad remotes.
-* **ExoPlayer Integration:** Hardware-accelerated playback with native support for `TextureView` (fixing sideways portrait videos on TV).
-* **Continue Watching:** Remembers your exact playback millisecond. Drop out of a movie and resume it instantly later.
-* **Picture-in-Picture (PiP):** Fully integrated Android 12+ PiP with lifecycle-aware audio controls.
-* **Smart Hardware Focus:** Advanced Jetpack Compose spatial focus bridges prevent the TV remote from ever getting stuck in empty UI space.
+## Requirements
 
----
+- Python 3.8 or newer
+- FFmpeg (required only if you want to use the optimizer tool)
 
-## 🚀 Getting Started
+Install Python dependencies:
 
-### Prerequisites
-* **Python 3.8+** installed on your host machine (Mac, Windows, or Linux).
-* **FFmpeg** installed (Required *only* if you plan to use the MKV Optimizer).
-  * **macOS:** `brew install ffmpeg`
-  * **Windows:** Download via `winget install ffmpeg` or from the official site.
-  * **Linux (Ubuntu/Debian):** `sudo apt install ffmpeg`
+```bash
+pip install -r requirements.txt
+```
 
-### Installation
+## Running the main server
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/donedos/Open_Stream.git
-   cd Open_Stream
-Install the required Python packages:
+1. Clone the repository:
 
-Bash
-pip install fastapi uvicorn
-Usage
-Running the Media Server:
+```bash
+git clone https://github.com/donedos/Open_Stream.git
+cd Open_Stream
+```
 
-Bash
+2. Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+3. Start the server:
+
+```bash
 python3 OpenStreamServer.py
-(Note: On Windows, you may just need to type python OpenStreamServer.py)
+```
 
-Click Browse Library and select the folder where your movies/shows are stored.
+4. In the GUI, click Browse Library, choose your media folder, and click Start Server.
 
-Click Start Server.
+5. Open the displayed local address in your browser or client app, for example:
 
-The GUI will display your Local IP address (e.g., 192.168.1.X:8000). Point your Android app to this IP!
+```text
+http://192.168.1.10:8000
+```
 
-Running the MKV Optimizer:
-If you have heavy MKV files that buffer forever or have no sound on Android:
+## Running the optimizer
 
-Bash
-python3 MKV_Optimizer.py
-Select your media folder.
+If you have large MKV/MP4 files that load slowly or have audio issues on Android, you can run the optimizer tool:
 
-Click Start. The tool will safely run in the background, processing files without freezing your computer.
+```bash
+python3 library_optimizer.py
+```
 
-💻 Running at Boot (Headless / Auto-Start)
-If you compile the server using PyInstaller (pyinstaller --onefile --noconsole OpenStreamServer.py), you can set it to run automatically when your computer turns on.
+Select your media directory and start the process. The tool will use FFmpeg to create optimized files and copy or extract subtitles where possible.
 
-For Linux (Ubuntu/Debian):
+## Expected folder structure
 
-Open your terminal and create a desktop entry:
+OpenStream scans your selected library for media in a simple, predictable layout. The most reliable format is:
 
-Bash
-nano ~/.config/autostart/openstream.desktop
-Paste the following (update the path to match your machine):
+```text
+MediaRoot/
+├── Movies/
+│   └── Action/
+│       └── Inception/
+│           ├── Inception.mp4
+│           ├── Inception.jpg
+│           └── Inception.srt
+├── Series/
+│   └── Drama/
+│       └── Breaking Bad/
+│           ├── S01E01.mp4
+│           ├── S01E01.srt
+│           └── poster.jpg
+└── IPTV/
+    └── channels.m3u
+```
 
-Ini, TOML
-[Desktop Entry]
-Type=Application
-Name=OpenStream Server
-Comment=Starts the Local Media Server
-# Waits 8 seconds to ensure external USB drives are fully mounted!
-Exec=bash -c "sleep 8 && /path/to/your/dist/OpenStreamServer"
-Terminal=false
-X-GNOME-Autostart-enabled=true
-For Windows:
-Press Win + R, type shell:startup, and drag a shortcut of your compiled .exe into the folder.
+Notes:
+- Video files should be .mp4, .mkv, .avi, or .webm.
+- Thumbnail images can be .jpg, .jpeg, .png, or .webp.
+- Subtitle files can be .srt or .vtt.
+- For series, placing episodes directly inside a show folder is detected well.
 
-For macOS:
-Go to System Settings > General > Login Items and add your compiled application to the "Open at Login" list.
+## Project layout
 
-🏗️ Built With
-FastAPI - Backend API framework
+- [OpenStreamServer.py](OpenStreamServer.py) - main desktop app and FastAPI server
+- [library_optimizer.py](library_optimizer.py) - media optimization utility
+- [server.py](server.py) - simplified FastAPI backend example
+- [requirements.txt](requirements.txt) - Python dependencies
+- [server_config.json](server_config.json) - saved media path configuration
 
-Uvicorn - ASGI web server
+## Notes
 
-Tkinter - Python GUI
+- The application is designed for local-network use and is not intended as a public internet streaming service.
+- Some media folders may need companion thumbnail and subtitle files for the best experience.
 
-Jetpack Compose - Android Native UI
+## License
 
-Media3 (ExoPlayer) - Android Video Playback
-
-📜 License
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License. See the LICENSE file if present in your distribution.
